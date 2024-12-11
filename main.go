@@ -172,13 +172,3 @@ func buildRequest(targetURL *url.URL) *http.Request {
 	req.Header.Set("Origin", targetURL.Scheme+"://"+targetURL.Host)
 	return req
 }
-
-// Simulasi header random untuk meningkatkan efektivitas
-func getRandomUserAgent() string   { return "Mozilla/5.0 (compatible; CustomBot/1.0)" }
-func getRandomAccept() string      { return "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" }
-func getRandomLanguage() string    { return "en-US,en;q=0.5" }
-func generateIP() string           { return fmt.Sprintf("%d.%d.%d.%d", rand.Intn(255), rand.Intn(255), rand.Intn(255), rand.Intn(255)) }
-
-func getCurrentTime() string {
-	return time.Now().Format("15:04:05")
-}
