@@ -52,5 +52,5 @@ func generateIP() string {
 }
 
 func init() {
-	rand.Seed(time.Now().UnixNano()) // Seed untuk memastikan hasil acak yang lebih baik
+	rand.Seed(time.Now().UnixNano()) // Seed untuk acak yang lebih baik
 }
